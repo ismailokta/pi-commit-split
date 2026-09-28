@@ -65,10 +65,6 @@ P              Commit selected topics and push
 Esc            Cancel
 ```
 
-## Panduan publishing
-
-Panduan lengkap GitHub, npm, Pi Package, Trusted Publishing, dan GitHub Actions tersedia di [`docs/publishing-pi-package.md`](docs/publishing-pi-package.md).
-
 ## Install
 
 From npm:
