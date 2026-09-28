@@ -273,16 +273,8 @@ export default function commitWorkflow(pi: ExtensionAPI) {
 
 	const handler = async (_args: string, ctx: ExtensionContext) => runWorkflow(pi, ctx, false, baselineFiles);
 	pi.registerCommand("commit-split", { description: "Select change topics and create separate commits", handler });
-	pi.registerCommand("commit-push", {
-		description: "Select change topics, commit, and push",
-		handler: async (_args, ctx) => runWorkflow(pi, ctx, true, baselineFiles),
-	});
 	pi.registerShortcut(Key.ctrlShift("c"), {
 		description: "Split commit: select topics and commit",
 		handler,
-	});
-	pi.registerShortcut(Key.ctrlShift("p"), {
-		description: "Split commit and push",
-		handler: async (ctx) => runWorkflow(pi, ctx, true, baselineFiles),
 	});
 }

@@ -44,14 +44,12 @@ Commit messages are generated from the diff and adapt to the repository's existi
 
 ```text
 /commit-split   Select topics and create separate commits
-/commit-push    Select topics, commit, and push
 ```
 
 Shortcuts:
 
 ```text
 Ctrl+Shift+C   Select topics and commit
-Ctrl+Shift+P   Select topics, commit, and push
 ```
 
 Inside the TUI:
