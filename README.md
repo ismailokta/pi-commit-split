@@ -15,6 +15,31 @@ The extension groups Git changes, asks the active LLM for concise Conventional C
 - Refuses to start when the Git index already contains staged changes
 - Conventional Commit types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `build`, and `ci`
 
+## TUI preview
+
+The workflow opens a focused terminal selector. Topics that look unrelated or pre-existing start unchecked, while current task changes are selected conservatively:
+
+```text
+┌─ Split commit — Select topics ───────────────────────────────────────────────┐
+│                                                                              │
+│ ❯ ☑ src changes — feat(editor): Add markdown preview support                │
+│   ☑ docs changes — docs(readme): Explain the preview workflow               │
+│   ☐ .pi changes — chore(.pi): Refresh local Pi configuration                 │
+│   ☐ assets changes — chore(assets): Add updated interface screenshots        │
+│                                                                              │
+│ ↑↓ move · Space toggle · a select all · n select none                       │
+│ Enter/c commit · p commit & push · Esc cancel                               │
+│                                                                              │
+│ Commit message:                                                              │
+│ feat(editor): Add markdown preview support                                  │
+│                                                                              │
+│ Adds a preview step for rendered Markdown while keeping the source editor    │
+│ unchanged. This makes it easier to review formatting before committing.     │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+Commit messages are generated from the diff and adapt to the repository's existing language and the user's context. The interface remains in English.
+
 ## Commands
 
 ```text
