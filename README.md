@@ -85,4 +85,21 @@ Try locally without installing:
 pi -e ./extensions/commit-workflow.ts
 ```
 
+## Release
+
+Publishing is handled by GitHub Actions when a version tag is pushed. The tag must match `package.json` exactly:
+
+```bash
+npm version patch
+# or: npm version minor / npm version major
+git push origin main --follow-tags
+```
+
+The workflow validates the tag, then publishes to npm with provenance. Configure npm Trusted Publishing for this repository before the first automated release:
+
+- Package: `pi-commit-split`
+- Provider: GitHub Actions
+- Repository: `ismailokta/pi-commit-split`
+- Workflow: `.github/workflows/publish.yml`
+
 The extension uses the active Pi model to generate commit messages. Review every selected topic and message before committing or pushing.
