@@ -1,0 +1,26 @@
+{
+  "name": "pi-commit-split",
+  "version": "0.1.0",
+  "description": "Adaptive topic-based commit and push workflow for Pi",
+  "keywords": ["pi-package", "pi", "git", "commit"],
+  "license": "MIT",
+  "files": [
+    "extensions",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ismailokta/pi-commit-split"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/commit-workflow.ts"
+    ]
+  }
+}
