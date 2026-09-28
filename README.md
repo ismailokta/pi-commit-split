@@ -22,19 +22,19 @@ The workflow opens a focused terminal selector. Topics that look unrelated or pr
 ```text
 ┌─ Split commit — Select topics ───────────────────────────────────────────────┐
 │                                                                              │
-│ ❯ ☑ src changes — feat(editor): Add markdown preview support                │
-│   ☑ docs changes — docs(readme): Explain the preview workflow               │
+│ ❯ ☑ src changes — feat(editor): Add markdown preview support                 │
+│   ☑ docs changes — docs(readme): Explain the preview workflow                │
 │   ☐ .pi changes — chore(.pi): Refresh local Pi configuration                 │
 │   ☐ assets changes — chore(assets): Add updated interface screenshots        │
 │                                                                              │
-│ ↑↓ move · Space toggle · a select all · n select none                       │
-│ Enter/c commit · p commit & push · Esc cancel                               │
+│ ↑↓ move · Space toggle · a select all · n select none                        │
+│ Enter/c commit · p commit & push · Esc cancel                                │
 │                                                                              │
 │ Commit message:                                                              │
-│ feat(editor): Add markdown preview support                                  │
+│ feat(editor): Add markdown preview support                                   │
 │                                                                              │
 │ Adds a preview step for rendered Markdown while keeping the source editor    │
-│ unchanged. This makes it easier to review formatting before committing.     │
+│ unchanged. This makes it easier to review formatting before committing.      │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
