@@ -4,6 +4,18 @@ import { Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 type Topic = { label: string; files: string[]; message: string; defaultSelected: boolean };
 type Action = "commit" | "push" | "cancel";
 
+function startProgress(ctx: ExtensionContext, message: string): () => void {
+	const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+	let index = 0;
+	const update = () => ctx.ui.setStatus("commit-workflow", `[${frames[index++ % frames.length]}] ${message}`);
+	update();
+	const timer = setInterval(update, 120);
+	return () => {
+		clearInterval(timer);
+		ctx.ui.setStatus("commit-workflow", undefined);
+	};
+}
+
 function topicFor(file: string): { scope: string; type: string } {
 	const parts = file.split("/");
 	const root = parts[0]?.toLowerCase() || "project";
@@ -206,9 +218,13 @@ async function runWorkflow(pi: ExtensionAPI, ctx: ExtensionContext, push: boolea
 		return;
 	}
 
-	ctx.ui.setStatus("commit-workflow", "Generating commit messages…");
-	const suggestedTopics = await suggestMessages(pi, ctx, topics);
-	ctx.ui.setStatus("commit-workflow", undefined);
+	const stopGenerationProgress = startProgress(ctx, "Generating commit messages…");
+	let suggestedTopics: Topic[] = [];
+	try {
+		suggestedTopics = await suggestMessages(pi, ctx, topics);
+	} finally {
+		stopGenerationProgress();
+	}
 	if (suggestedTopics.some((topic) => !topic.message.trim())) {
 		ctx.ui.notify("The LLM did not generate a message for every topic; commit cancelled.", "error");
 		return;
@@ -216,30 +232,35 @@ async function runWorkflow(pi: ExtensionAPI, ctx: ExtensionContext, push: boolea
 	const result = await selectTopics(ctx, suggestedTopics);
 	if (!result || result.action === "cancel" || !result.topics.length) return;
 
-	for (const topic of result.topics) {
-		const add = await pi.exec("git", ["add", "--", ...topic.files]);
-		if (add.code !== 0) {
-			ctx.ui.notify(`Failed to stage ${topic.label}: ${add.stderr.trim()}`, "error");
-			return;
+	const stopProgress = startProgress(ctx, push || result.action === "push" ? "Creating and pushing commits…" : "Creating commits…");
+	try {
+		for (const topic of result.topics) {
+			const add = await pi.exec("git", ["add", "--", ...topic.files]);
+			if (add.code !== 0) {
+				ctx.ui.notify(`Failed to stage ${topic.label}: ${add.stderr.trim()}`, "error");
+				return;
+			}
+			const check = await pi.exec("git", ["diff", "--cached", "--check"]);
+			if (check.code !== 0) {
+				ctx.ui.notify(`Whitespace error in ${topic.label}; the index was left staged for correction.`, "error");
+				return;
+			}
+			const commit = await pi.exec("git", ["commit", "-m", topic.message]);
+			if (commit.code !== 0) {
+				ctx.ui.notify(`Commit failed for ${topic.label}: ${commit.stderr.trim()}`, "error");
+				return;
+			}
 		}
-		const check = await pi.exec("git", ["diff", "--cached", "--check"]);
-		if (check.code !== 0) {
-			ctx.ui.notify(`Whitespace error in ${topic.label}; the index was left staged for correction.`, "error");
-			return;
-		}
-		const commit = await pi.exec("git", ["commit", "-m", topic.message]);
-		if (commit.code !== 0) {
-			ctx.ui.notify(`Commit failed for ${topic.label}: ${commit.stderr.trim()}`, "error");
-			return;
-		}
-	}
 
-	if (push || result.action === "push") {
-		const pushed = await pi.exec("git", ["push"]);
-		if (pushed.code !== 0) {
-			ctx.ui.notify(`Commits succeeded, but push failed: ${pushed.stderr.trim()}`, "warning");
-			return;
+		if (push || result.action === "push") {
+			const pushed = await pi.exec("git", ["push"]);
+			if (pushed.code !== 0) {
+				ctx.ui.notify(`Commits succeeded, but push failed: ${pushed.stderr.trim()}`, "warning");
+				return;
+			}
 		}
+	} finally {
+		stopProgress();
 	}
 	ctx.ui.notify(`${result.topics.length} commit${result.topics.length === 1 ? "" : "s"} created${push || result.action === "push" ? " and pushed" : ""}.`, "info");
 }
