@@ -96,11 +96,39 @@ ${diff.stdout.slice(0, 30000)}`;
 			.join("\\n");
 		const parsed = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? "[]") as Array<{ label?: string; message?: string }>;
 		const generated = parsed.filter((item) => typeof item.message === "string" && item.message.trim());
-		if (generated.length === topics.length) {
-			return topics.map((topic, index) => ({ ...topic, message: generated[index].message!.trim() }));
-		}
 		const messages = new Map(generated.filter((item) => item.label).map((item) => [item.label, item.message!.trim()]));
-		return topics.map((topic) => ({ ...topic, message: messages.get(topic.label) ?? "" }));
+		const suggestions = topics.map((topic, index) => ({
+			...topic,
+			message: generated.length === topics.length ? generated[index]?.message?.trim() ?? "" : messages.get(topic.label) ?? "",
+		}));
+
+		for (let index = 0; index < suggestions.length; index++) {
+			if (suggestions[index].message) continue;
+			const topic = topics[index];
+			const singleDiff = await pi.exec("git", ["diff", "--", ...topic.files]);
+			const singlePrompt = `Generate one Conventional Commit message for this Git change.
+Return ONLY JSON: {"message":"subject\\n\\nbody"}.
+Adapt the language to the recent commit history and user context. Use a specific subject, a concise 1-3 sentence body, and one type from feat, fix, refactor, docs, test, chore, perf, build, or ci. Do not invent details or add Co-Authored-By.
+Topic: ${topic.label}
+Files: ${topic.files.join(", ")}
+Diff:
+${singleDiff.stdout.slice(0, 30000)}`;
+			const response = await ctx.modelRegistry.complete(
+				ctx.model!,
+				{
+					systemPrompt: "Return valid JSON only. Do not use Markdown fences.",
+					messages: [{ role: "user", content: [{ type: "text", text: singlePrompt }], timestamp: Date.now() }],
+				},
+				{ signal: ctx.signal },
+			);
+			const singleText = response.content
+				.filter((part: { type: string; text?: string }) => part.type === "text")
+				.map((part: { text?: string }) => part.text ?? "")
+				.join("\\n");
+			const single = JSON.parse(singleText.match(/\{[\s\S]*\}/)?.[0] ?? "{}") as { message?: string };
+			suggestions[index].message = typeof single.message === "string" ? single.message.trim() : "";
+		}
+		return suggestions;
 	} catch (error) {
 		ctx.ui.notify(`Failed to generate commit messages: ${error instanceof Error ? error.message : String(error)}`, "error");
 		return topics;
