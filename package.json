@@ -1,8 +1,13 @@
 {
   "name": "pi-commit-split",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Adaptive topic-based commit and push workflow for Pi",
-  "keywords": ["pi-package", "pi", "git", "commit"],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "git",
+    "commit"
+  ],
   "license": "MIT",
   "files": [
     "extensions",
