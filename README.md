@@ -13,6 +13,7 @@ The extension groups Git changes, asks the active LLM for concise Conventional C
 - Explicit file staging; never uses `git add .`
 - Separate commit or commit-and-push actions
 - Refuses to start when the Git index already contains staged changes
+- Optional natural-language instructions for commit message language and style
 - Conventional Commit types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `build`, and `ci`
 
 ## TUI preview
@@ -43,7 +44,12 @@ Commit messages are generated from the diff and adapt to the repository's existi
 ## Commands
 
 ```text
-/commit-split   Select topics and create separate commits
+/commit-split [optional natural-language instruction]   Select topics and create separate commits
+
+Examples:
+/commit-split
+/commit-split dalam bahasa Indonesia
+/commit-split gunakan subject maksimal 60 karakter
 ```
 
 Shortcuts:
@@ -83,4 +89,4 @@ Try locally without installing:
 pi -e ./extensions/commit-workflow.ts
 ```
 
-The extension uses the active Pi model to generate commit messages. Review every selected topic and message before committing or pushing.
+The extension uses the active Pi model to generate commit messages. An optional instruction affects commit-message language and style only; it cannot run Git commands, change files, bypass validation, or trigger a push. Topic grouping remains based on the repository's file structure. Review every selected topic and message before committing or pushing.

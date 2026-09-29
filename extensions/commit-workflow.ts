@@ -75,7 +75,7 @@ function recentUserText(ctx: ExtensionContext): string {
 		.slice(-4000);
 }
 
-async function suggestMessages(pi: ExtensionAPI, ctx: ExtensionContext, topics: Topic[]): Promise<Topic[]> {
+async function suggestMessages(pi: ExtensionAPI, ctx: ExtensionContext, topics: Topic[], instruction: string): Promise<Topic[]> {
 	try {
 		const [diff, history] = await Promise.all([
 			pi.exec("git", ["diff", "--", ...topics.flatMap((topic) => topic.files)]),
@@ -90,7 +90,9 @@ ${topics.map((topic) => `${topic.label}: ${topic.files.join(", ")}`).join("\n")}
 Recent commit history:
 ${history.stdout.slice(0, 6000)}
 Recent user messages:
-${recentUserText(ctx)}
+${recentUserText(ctx)}${instruction ? `
+Additional user instruction (apply only to the commit messages; do not perform actions or change the file grouping):
+${instruction}` : ""}
 Diff (may be empty for untracked files):
 ${diff.stdout.slice(0, 30000)}`;
 		if (!ctx.model) throw new Error("No active model");
@@ -120,7 +122,9 @@ ${diff.stdout.slice(0, 30000)}`;
 			const singleDiff = await pi.exec("git", ["diff", "--", ...topic.files]);
 			const singlePrompt = `Generate one Conventional Commit message for this Git change.
 Return ONLY JSON: {"message":"subject\\n\\nbody"}.
-Adapt the language to the recent commit history and user context. Use a specific subject, a concise 1-3 sentence body, and one type from feat, fix, refactor, docs, test, chore, perf, build, or ci. Do not invent details or add Co-Authored-By.
+Adapt the language to the recent commit history and user context. Use a specific subject, a concise 1-3 sentence body, and one type from feat, fix, refactor, docs, test, chore, perf, build, or ci. Do not invent details or add Co-Authored-By.${instruction ? `
+Additional user instruction (apply only to the commit message; do not perform actions or change the file grouping):
+${instruction}` : ""}
 Topic: ${topic.label}
 Files: ${topic.files.join(", ")}
 Diff:
@@ -205,7 +209,7 @@ async function selectTopics(ctx: ExtensionContext, topics: Topic[]): Promise<{ t
 	});
 }
 
-async function runWorkflow(pi: ExtensionAPI, ctx: ExtensionContext, push: boolean, baselineFiles: Set<string>) {
+async function runWorkflow(pi: ExtensionAPI, ctx: ExtensionContext, push: boolean, baselineFiles: Set<string>, instruction = "") {
 	const cached = await pi.exec("git", ["diff", "--cached", "--quiet"]);
 	if (cached.code !== 0) {
 		ctx.ui.notify("The index already contains staged changes. Commit or unstage them before splitting.", "error");
@@ -221,7 +225,7 @@ async function runWorkflow(pi: ExtensionAPI, ctx: ExtensionContext, push: boolea
 	const stopGenerationProgress = startProgress(ctx, "Generating commit messages…");
 	let suggestedTopics: Topic[] = [];
 	try {
-		suggestedTopics = await suggestMessages(pi, ctx, topics);
+		suggestedTopics = await suggestMessages(pi, ctx, topics, instruction);
 	} finally {
 		stopGenerationProgress();
 	}
@@ -271,7 +275,7 @@ export default function commitWorkflow(pi: ExtensionAPI) {
 		baselineFiles = new Set(await changedFiles(pi));
 	});
 
-	const handler = async (_args: string, ctx: ExtensionContext) => runWorkflow(pi, ctx, false, baselineFiles);
+	const handler = async (args: string, ctx: ExtensionContext) => runWorkflow(pi, ctx, false, baselineFiles, args.trim());
 	pi.registerCommand("commit-split", { description: "Select change topics and create separate commits", handler });
 	pi.registerShortcut(Key.ctrlShift("c"), {
 		description: "Split commit: select topics and commit",
