@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.8] - 2026-11-24
+
+### Changed
+- Allow split commits to proceed without blocking on Git whitespace-check findings.
+
 ## [0.1.7] - 2026-10-13
 
 ### Added

@@ -306,11 +306,6 @@ async function runWorkflow(pi: ExtensionAPI, ctx: ExtensionContext, push: boolea
 				ctx.ui.notify(`Failed to stage ${topic.label}: ${add.stderr.trim()}`, "error");
 				return;
 			}
-			const check = await pi.exec("git", ["diff", "--cached", "--check"]);
-			if (check.code !== 0) {
-				ctx.ui.notify(`Whitespace error in ${topic.label}; the index was left staged for correction.`, "error");
-				return;
-			}
 			const commit = await pi.exec("git", ["commit", "-m", topic.message]);
 			if (commit.code !== 0) {
 				ctx.ui.notify(`Commit failed for ${topic.label}: ${commit.stderr.trim()}`, "error");

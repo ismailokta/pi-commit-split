@@ -86,7 +86,7 @@ pi install npm:pi-commit-split
 From GitHub:
 
 ```bash
-pi install git:github.com/ismailokta/pi-commit-split@v0.1.7
+pi install git:github.com/ismailokta/pi-commit-split@v0.1.8
 ```
 
 Try locally without installing:
