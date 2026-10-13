@@ -1,8 +1,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-type Topic = { label: string; files: string[]; message: string; defaultSelected: boolean };
+type ChangedFile = { path: string; status: string; additions: number; deletions: number; binary: boolean };
+type Topic = { label: string; files: ChangedFile[]; message: string; defaultSelected: boolean };
 type Action = "commit" | "push" | "cancel";
+const MAX_VISIBLE_FILES = 4;
 
 function startProgress(ctx: ExtensionContext, message: string): () => void {
 	const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -29,14 +31,18 @@ function topicFor(file: string): { scope: string; type: string } {
 	return { scope: parts.length > 1 ? parts[0] : "root", type: "changes" };
 }
 
-async function changedFiles(pi: ExtensionAPI): Promise<string[]> {
-	const result = await pi.exec("git", ["status", "--porcelain=v1"]);
+async function changedFiles(pi: ExtensionAPI): Promise<ChangedFile[]> {
+	const result = await pi.exec("git", ["status", "--porcelain=v1", "--untracked-files=all"]);
 	return result.stdout
 		.split("\n")
 		.map((line) => line.trimEnd())
 		.filter((line) => line.length > 2)
-		.map((line) => line.slice(3).replace(/^\"|\"$/g, ""))
-		.filter((file) => file && !file.includes(" -> "));
+		.map((line) => ({
+			status: line.slice(0, 2).includes("?") || line.slice(0, 2).includes("A") ? "A" : line.slice(0, 2).includes("D") ? "D" : "M",
+			path: line.slice(3).replace(/^\"|\"$/g, ""),
+		}))
+		.filter(({ path }) => path && !path.includes(" -> "))
+		.map(({ path, status }) => ({ path, status, additions: 0, deletions: 0, binary: false }));
 }
 
 function isToolingOrGenerated(file: string): boolean {
@@ -44,10 +50,10 @@ function isToolingOrGenerated(file: string): boolean {
 		return first.startsWith(".") || file.startsWith("vendor/") || file.startsWith("node_modules/") || file.startsWith("storage/") || file.startsWith("bootstrap/cache/");
 }
 
-function buildTopics(files: string[], baselineFiles: Set<string>): Topic[] {
+function buildTopics(files: ChangedFile[], baselineFiles: Set<string>): Topic[] {
 	const groups = new Map<string, Topic>();
 	for (const file of files) {
-		const { scope, type } = topicFor(file);
+		const { scope, type } = topicFor(file.path);
 		const key = `${type}:${scope}`;
 		const current = groups.get(key) ?? {
 			label: `${scope} changes`,
@@ -56,10 +62,25 @@ function buildTopics(files: string[], baselineFiles: Set<string>): Topic[] {
 			defaultSelected: false,
 		};
 		current.files.push(file);
-		current.defaultSelected ||= !baselineFiles.has(file) && !isToolingOrGenerated(file);
+		current.defaultSelected ||= !baselineFiles.has(file.path) && !isToolingOrGenerated(file.path);
 		groups.set(key, current);
 	}
 	return [...groups.values()];
+}
+
+async function populateFileStats(pi: ExtensionAPI, topics: Topic[]): Promise<void> {
+	await Promise.all(topics.flatMap((topic) => topic.files.map(async (file) => {
+		const result = file.status === "A"
+			? await pi.exec("git", ["diff", "--no-index", "--numstat", "/dev/null", file.path])
+			: await pi.exec("git", ["diff", "--numstat", "--", file.path]);
+		const [added, deleted] = result.stdout.trim().split("\t");
+		if (added === "-" || deleted === "-") {
+			file.binary = true;
+		} else {
+			file.additions = Number(added) || 0;
+			file.deletions = Number(deleted) || 0;
+		}
+	})));
 }
 
 function recentUserText(ctx: ExtensionContext): string {
@@ -78,7 +99,7 @@ function recentUserText(ctx: ExtensionContext): string {
 async function suggestMessages(pi: ExtensionAPI, ctx: ExtensionContext, topics: Topic[], instruction: string): Promise<Topic[]> {
 	try {
 		const [diff, history] = await Promise.all([
-			pi.exec("git", ["diff", "--", ...topics.flatMap((topic) => topic.files)]),
+			pi.exec("git", ["diff", "--", ...topics.flatMap((topic) => topic.files.map((file) => file.path))]),
 			pi.exec("git", ["log", "-n", "12", "--format=%s%n%b"]),
 		]);
 		const prompt = `Write Conventional Commit messages for this project.
@@ -86,7 +107,7 @@ Return ONLY a JSON array: [{"label":"exact topic label","message":"subject\\n\\n
 The user interface is always English, but commit messages must adapt to the project and user. Infer the language from recent commit history and recent user messages below. If there is no clear signal, use English.
 Each message must have a specific one-line subject and a concise 1-3 sentence body explaining the change and its important reason or impact. Do not invent details, do not add Co-Authored-By, and do not use a generic opener such as "Update" for every subject. Choose exactly one semantic type from this dictionary: feat = new feature or capability; fix = bug fix; refactor = structural change without behavior change; docs = documentation; test = adding or improving tests; chore = maintenance, configuration, or tooling; perf = performance improvement; build = dependency or build process; ci = pipeline or deployment.
 Topics:
-${topics.map((topic) => `${topic.label}: ${topic.files.join(", ")}`).join("\n")}
+${topics.map((topic) => `${topic.label}: ${topic.files.map((file) => file.path).join(", ")}`).join("\n")}
 Recent commit history:
 ${history.stdout.slice(0, 6000)}
 Recent user messages:
@@ -119,14 +140,14 @@ ${diff.stdout.slice(0, 30000)}`;
 		for (let index = 0; index < suggestions.length; index++) {
 			if (suggestions[index].message) continue;
 			const topic = topics[index];
-			const singleDiff = await pi.exec("git", ["diff", "--", ...topic.files]);
+			const singleDiff = await pi.exec("git", ["diff", "--", ...topic.files.map((file) => file.path)]);
 			const singlePrompt = `Generate one Conventional Commit message for this Git change.
 Return ONLY JSON: {"message":"subject\\n\\nbody"}.
 Adapt the language to the recent commit history and user context. Use a specific subject, a concise 1-3 sentence body, and one type from feat, fix, refactor, docs, test, chore, perf, build, or ci. Do not invent details or add Co-Authored-By.${instruction ? `
 Additional user instruction (apply only to the commit message; do not perform actions or change the file grouping):
 ${instruction}` : ""}
 Topic: ${topic.label}
-Files: ${topic.files.join(", ")}
+Files: ${topic.files.map((file) => file.path).join(", ")}
 Diff:
 ${singleDiff.stdout.slice(0, 30000)}`;
 			const response = await ctx.modelRegistry.complete(
@@ -160,6 +181,7 @@ async function selectTopics(ctx: ExtensionContext, topics: Topic[]): Promise<{ t
 	return ctx.ui.custom((tui, theme, _kb, done) => {
 		let cursor = 0;
 		const selected = new Set(topics.flatMap((topic, index) => topic.defaultSelected ? [index] : []));
+		const expanded = new Set<number>();
 		let cachedWidth: number | undefined;
 		let cachedLines: string[] | undefined;
 		const invalidate = () => {
@@ -168,23 +190,54 @@ async function selectTopics(ctx: ExtensionContext, topics: Topic[]): Promise<{ t
 		};
 
 		const finish = (action: Action) => done({ topics: topics.filter((_, i) => selected.has(i)), action });
+		const panelLine = (content: string, width: number) => {
+			if (width < 4) return truncateToWidth(content, width, "…");
+			const innerWidth = width - 4;
+			const clipped = truncateToWidth(content, innerWidth, "…");
+			const padding = " ".repeat(Math.max(0, innerWidth - visibleWidth(clipped)));
+			return `${theme.fg("accent", "│")} ${clipped}${padding} ${theme.fg("accent", "│")}`;
+		};
+		const panelBorder = (width: number, top = false) => {
+			const label = "─ Split commit — Select topics ";
+			const available = Math.max(0, width - visibleWidth(label) - 2);
+			const line = top ? `╭${label}${"─".repeat(available)}╮` : `╰${"─".repeat(Math.max(0, width - 2))}╯`;
+			return theme.fg("accent", truncateToWidth(line, width, "…"));
+		};
 		const component = {
 			render(width: number) {
 				if (cachedLines && cachedWidth === width) return cachedLines;
-				const lines = [
-					theme.fg("accent", theme.bold("Split commit — Select topics")),
-					"",
-				];
+				const lines = [panelBorder(width, true), panelLine("", width)];
 				for (let i = 0; i < topics.length; i++) {
 					const topic = topics[i];
+					const additions = topic.files.reduce((total, file) => total + file.additions, 0);
+					const deletions = topic.files.reduce((total, file) => total + file.deletions, 0);
+					const binaryCount = topic.files.filter((file) => file.binary).length;
+					const fileCount = topic.files.length;
+					const fileLabel = `${fileCount} file${fileCount === 1 ? "" : "s"}`;
+					const stats = `+${additions} −${deletions}${binaryCount ? ` · ${binaryCount} binary` : ""}`;
 					const marker = selected.has(i) ? "☑" : "☐";
-					const prefix = i === cursor ? theme.fg("accent", "❯ ") : "  ";
-					lines.push(`${prefix}${marker} ${topic.label} — ${topic.message.replace(/\s+/g, " ") || "Generating commit messages…"}`);
+					const prefix = i === cursor ? "❯" : " ";
+					const heading = `${prefix} ${marker} ${topic.label}  ·  ${fileLabel}  ·  ${stats}`;
+					lines.push(panelLine(i === cursor ? theme.fg("accent", theme.bold(heading)) : heading, width));
+					const subject = topic.message.split("\n")[0] || "Generating commit message…";
+					lines.push(panelLine(`  ${theme.fg("muted", subject)}`, width));
+					const isExpanded = fileCount <= MAX_VISIBLE_FILES || expanded.has(i);
+					const visibleFiles = isExpanded ? topic.files : topic.files.slice(0, MAX_VISIBLE_FILES);
+					for (const file of visibleFiles) {
+						const statusColor = file.status === "A" ? "success" : file.status === "D" ? "error" : "muted";
+						lines.push(panelLine(`    ${theme.fg(statusColor, file.status)} ${file.path}`, width));
+					}
+					if (!isExpanded) {
+						lines.push(panelLine(`    ${theme.fg("dim", `… ${fileCount - MAX_VISIBLE_FILES} more · press v to expand`)}`, width));
+					}
+					if (i < topics.length - 1) lines.push(panelLine(theme.fg("dim", "─".repeat(Math.max(0, width - 8))), width));
 				}
-				lines.push("", theme.fg("muted", "↑↓ move · Space toggle · a select all · n select none · Enter/c commit · p commit & push · Esc cancel"));
-				lines.push(theme.fg("dim", `Commit message: ${topics[cursor]?.message?.replace(/\s+/g, " ") || "LLM suggestion pending"}`));
+				lines.push(panelLine("", width));
+				lines.push(panelLine(theme.fg("muted", "↑↓ topic · Space toggle · a all · n none · v files · Enter/c commit · p push · Esc cancel"), width));
+				lines.push(panelLine(theme.fg("dim", `Commit message: ${topics[cursor]?.message?.replace(/\s+/g, " ") || "LLM suggestion pending"}`), width));
+				lines.push(panelBorder(width));
 				cachedWidth = width;
-				cachedLines = lines.map((line) => truncateToWidth(line, width, "…"));
+				cachedLines = lines;
 				return cachedLines;
 			},
 			invalidate,
@@ -199,6 +252,9 @@ async function selectTopics(ctx: ExtensionContext, topics: Topic[]): Promise<{ t
 					topics.forEach((_, index) => selected.add(index));
 				} else if (data === "n") {
 					selected.clear();
+				} else if (data === "v" && topics[cursor].files.length > MAX_VISIBLE_FILES) {
+					if (expanded.has(cursor)) expanded.delete(cursor);
+					else expanded.add(cursor);
 				} else if (data === "c" || matchesKey(data, Key.enter)) return finish("commit");
 				else if (data === "p") return finish("push");
 				invalidate();
@@ -222,6 +278,12 @@ async function runWorkflow(pi: ExtensionAPI, ctx: ExtensionContext, push: boolea
 		return;
 	}
 
+	const stopStatsProgress = startProgress(ctx, "Analyzing changed files…");
+	try {
+		await populateFileStats(pi, topics);
+	} finally {
+		stopStatsProgress();
+	}
 	const stopGenerationProgress = startProgress(ctx, "Generating commit messages…");
 	let suggestedTopics: Topic[] = [];
 	try {
@@ -239,7 +301,7 @@ async function runWorkflow(pi: ExtensionAPI, ctx: ExtensionContext, push: boolea
 	const stopProgress = startProgress(ctx, push || result.action === "push" ? "Creating and pushing commits…" : "Creating commits…");
 	try {
 		for (const topic of result.topics) {
-			const add = await pi.exec("git", ["add", "--", ...topic.files]);
+			const add = await pi.exec("git", ["add", "--", ...topic.files.map((file) => file.path)]);
 			if (add.code !== 0) {
 				ctx.ui.notify(`Failed to stage ${topic.label}: ${add.stderr.trim()}`, "error");
 				return;
@@ -272,7 +334,7 @@ async function runWorkflow(pi: ExtensionAPI, ctx: ExtensionContext, push: boolea
 export default function commitWorkflow(pi: ExtensionAPI) {
 	let baselineFiles = new Set<string>();
 	pi.on("session_start", async () => {
-		baselineFiles = new Set(await changedFiles(pi));
+		baselineFiles = new Set((await changedFiles(pi)).map((file) => file.path));
 	});
 
 	const handler = async (args: string, ctx: ExtensionContext) => runWorkflow(pi, ctx, false, baselineFiles, args.trim());
