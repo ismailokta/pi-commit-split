@@ -1,6 +1,6 @@
 {
   "name": "pi-commit-split",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Adaptive topic-based commit and push workflow for Pi",
   "keywords": [
     "pi-package",
@@ -12,6 +12,7 @@
   "files": [
     "extensions",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "package.json"
   ],
