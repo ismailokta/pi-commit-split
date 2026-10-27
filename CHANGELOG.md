@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.9] - 2026-10-27
+
+### Changed
+- Support Pi and OMP APIs for model completion and progress indicators.
 ## [0.1.8] - 2026-11-24
 
 ### Changed

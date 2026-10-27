@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 type ChangedFile = { path: string; status: string; additions: number; deletions: number; binary: boolean };
@@ -6,15 +7,57 @@ type Topic = { label: string; files: ChangedFile[]; message: string; defaultSele
 type Action = "commit" | "push" | "cancel";
 const MAX_VISIBLE_FILES = 4;
 
+async function completeCommitPrompt(ctx: ExtensionContext, prompt: string) {
+	const model = ctx.model;
+	if (!model) throw new Error("No active model");
+	const sessionId = ctx.sessionManager.getSessionId();
+	const modelRegistry = ctx.modelRegistry as unknown as {
+		getApiKey(
+			model: NonNullable<ExtensionContext["model"]>,
+			sessionId: string,
+			options?: { signal?: AbortSignal },
+		): Promise<string | undefined>;
+	};
+	const apiKey = await modelRegistry.getApiKey(model, sessionId, { signal: ctx.signal });
+	if (!apiKey) throw new Error(`No credentials found for ${model.provider}`);
+	const response = await completeSimple(
+		model,
+		{
+			systemPrompt: "Return valid JSON only. Do not use Markdown fences.",
+			messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
+		},
+		{ apiKey, sessionId, signal: ctx.signal },
+	);
+	if (response.stopReason === "error") {
+		throw new Error(response.errorMessage ?? "Model request failed");
+	}
+	if (response.stopReason === "aborted") {
+		throw new Error("Model request aborted");
+	}
+	return response;
+}
+
+function setProgress(ctx: ExtensionContext, message?: string): void {
+	const ui = ctx.ui as unknown as {
+		setWidget?: (id: string, lines: string[] | undefined) => void;
+		setStatus?: (id: string, text: string | undefined) => void;
+	};
+	if (ui.setWidget) {
+		ui.setWidget("commit-workflow", message ? [message] : undefined);
+	} else if (ui.setStatus) {
+		ui.setStatus("commit-workflow", message);
+	}
+}
+
 function startProgress(ctx: ExtensionContext, message: string): () => void {
 	const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 	let index = 0;
-	const update = () => ctx.ui.setStatus("commit-workflow", `[${frames[index++ % frames.length]}] ${message}`);
+	const update = () => setProgress(ctx, `[${frames[index++ % frames.length]}] ${message}`);
 	update();
 	const timer = setInterval(update, 120);
 	return () => {
 		clearInterval(timer);
-		ctx.ui.setStatus("commit-workflow", undefined);
+		setProgress(ctx);
 	};
 }
 
@@ -116,15 +159,7 @@ Additional user instruction (apply only to the commit messages; do not perform a
 ${instruction}` : ""}
 Diff (may be empty for untracked files):
 ${diff.stdout.slice(0, 30000)}`;
-		if (!ctx.model) throw new Error("No active model");
-		const response = await ctx.modelRegistry.complete(
-			ctx.model,
-			{
-				systemPrompt: "Return valid JSON only. Do not use Markdown fences.",
-				messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
-			},
-			{ signal: ctx.signal },
-		);
+		const response = await completeCommitPrompt(ctx, prompt);
 		const text = response.content
 			.filter((part: { type: string; text?: string }) => part.type === "text")
 			.map((part: { text?: string }) => part.text ?? "")
@@ -150,15 +185,8 @@ Topic: ${topic.label}
 Files: ${topic.files.map((file) => file.path).join(", ")}
 Diff:
 ${singleDiff.stdout.slice(0, 30000)}`;
-			const response = await ctx.modelRegistry.complete(
-				ctx.model!,
-				{
-					systemPrompt: "Return valid JSON only. Do not use Markdown fences.",
-					messages: [{ role: "user", content: [{ type: "text", text: singlePrompt }], timestamp: Date.now() }],
-				},
-				{ signal: ctx.signal },
-			);
-			const singleText = response.content
+			const singleResponse = await completeCommitPrompt(ctx, singlePrompt);
+			const singleText = singleResponse.content
 				.filter((part: { type: string; text?: string }) => part.type === "text")
 				.map((part: { text?: string }) => part.text ?? "")
 				.join("\\n");

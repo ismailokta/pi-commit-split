@@ -9,7 +9,7 @@ The extension groups Git changes, asks the active LLM for concise Conventional C
 - Adaptive topic grouping for any Git repository
 - LLM-generated commit subject and short body
 - Commit-message language follows recent commits and user context
-- Conservative default selection: pre-existing and tooling changes start unchecked
+- Compatible with Pi and OMP extension APIs
 - Shows each topic's changed files, file status, and added/deleted line counts
 - Automatically condenses long file lists; press `v` to expand or collapse the current topic
 - Explicit file staging; never uses `git add .`
@@ -86,7 +86,7 @@ pi install npm:pi-commit-split
 From GitHub:
 
 ```bash
-pi install git:github.com/ismailokta/pi-commit-split@v0.1.8
+pi install git:github.com/ismailokta/pi-commit-split@v0.1.9
 ```
 
 Try locally without installing:
@@ -95,4 +95,4 @@ Try locally without installing:
 pi -e ./extensions/commit-workflow.ts
 ```
 
-The extension uses the active Pi model to generate commit messages. An optional instruction affects commit-message language and style only; it cannot run Git commands, change files, bypass validation, or trigger a push. Topic grouping remains based on the repository's file structure. Review every selected topic and message before committing or pushing.
+The extension uses the active Pi/OMP model to generate commit messages. An optional instruction affects commit-message language and style only; it cannot run Git commands, change files, bypass validation, or trigger a push. Topic grouping remains based on the repository's file structure. Review every selected topic and message before committing or pushing.
