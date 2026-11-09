@@ -1,16 +1,21 @@
 {
   "name": "pi-commit-split",
-  "version": "0.1.9",
-  "description": "Adaptive topic-based commit and push workflow for Pi",
+  "version": "0.2.0",
+  "description": "Adaptive topic-based commit workflow for Pi and OpenCode",
+  "scripts": {
+    "test:core": "bun test tests/commit-core.test.ts"
+  },
   "keywords": [
     "pi-package",
     "pi",
+    "opencode",
     "git",
     "commit"
   ],
   "license": "MIT",
   "files": [
     "extensions",
+    ".opencode",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
@@ -22,11 +27,17 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*"
+    "@earendil-works/pi-tui": "*",
+    "@opentui/core": ">=0.6.6",
+    "@opentui/solid": ">=0.6.6",
+    "solid-js": ">=1.9.0"
   },
   "pi": {
     "extensions": [
       "./extensions/commit-workflow.ts"
     ]
+  },
+  "exports": {
+    "./tui": "./extensions/opencode-plugin.tsx"
   }
 }

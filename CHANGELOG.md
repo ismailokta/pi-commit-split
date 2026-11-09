@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0] - 2026-11-09
+
+### Added
+- Add an OpenCode 2.2.6+ TUI plugin with AI-generated editable commit messages, separate commit and push confirmations, and staged-index safeguards.
+- Add a single-panel OpenCode topic selector with checkboxes, file status and line totals, keyboard navigation, and expandable file lists.
+- Add a global OpenCode installation path and document review-race and wrong-repository limits.
+- Add executable Git-core tests for rename staging, concurrent unrelated staging, review changes, and a staged-index guard.
+
+### Changed
+- Use OpenTUI's Solid JSX runtime for the custom selector and keep selector keystrokes from reaching the composer underneath.
+- Commit selected paths with `git commit --only`, verify staged names with `--no-renames`, and stop when review changes or concurrent staged paths are detected.
+- Document OpenCode installation and review safeguards.
+
 ## [0.1.9] - 2026-10-27
 
 ### Changed
